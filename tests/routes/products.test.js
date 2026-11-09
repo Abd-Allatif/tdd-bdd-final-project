@@ -115,6 +115,20 @@ describe('Product Routes', () => {
             // We expect a 201, not a 415, because the base type is correct.
             expect(response.status).toBe(201);
         });
+
+        test('should return 400 if database error occurs during product creation', async () => {
+            jest.spyOn(Product, 'create').mockImplementationOnce(() => {
+                throw new Error('Database constraint violation');
+            });
+            const testProduct = ProductFactory.build();
+            const response = await request(app)
+                .post(BASE_URL)
+                .send(testProduct)
+                .expect(400);
+            
+            expect(response.body.error).toBe('Validation Error');
+            jest.restoreAllMocks();
+        });
     });
 
     // ADD TEST HERE
@@ -163,16 +177,24 @@ describe('Product Routes', () => {
                 .send(updatedData)
                 .expect(404);
         });
-        test('should return 400 on validation error during update', async () => {
+        test('should return 400 if database error occurs during product update', async () => {
             const products = await createProducts(1);
             const product = products[0];
-            const invalidUpdateData = { name: '' }; // Invalid name
+            const validPayload = ProductFactory.build(); // Use a valid full payload so validation passes
+            
+            jest.spyOn(Product, 'findByPk').mockImplementationOnce(() => ({
+                update: () => { throw new Error('Database update failed'); }
+            }));
 
-            await request(app)
+            const response = await request(app)
                 .put(`${BASE_URL}/${product.id}`)
-                .send(invalidUpdateData)
+                .send(validPayload)
                 .expect(400);
+
+            expect(response.body.error).toBe('Bad Request');
+            jest.restoreAllMocks();
         });
+        
     });
 
     describe('DELETE Product', () => {
@@ -245,4 +267,45 @@ describe('Product Routes', () => {
           });          
     });
 
+    describe('Error Handling and Edge Cases', () => {
+        test('should return empty array when filtering by invalid category', async () => {
+            const response = await request(app)
+                .get(`${BASE_URL}?category=INVALID_CATEGORY_NAME`)
+                .expect(200);
+            expect(response.body).toEqual([]);
+        });
+
+        test('should return 500 on internal server error when listing products', async () => {
+            jest.spyOn(Product, 'findAll').mockImplementationOnce(() => {
+                throw new Error('Database connection failed');
+            });
+            const response = await request(app)
+                .get(BASE_URL)
+                .expect(500);
+            expect(response.body.error).toBe('Internal Server Error');
+            jest.restoreAllMocks();
+        });
+
+        test('should return 500 on internal server error when getting product by id', async () => {
+            jest.spyOn(Product, 'findByPk').mockImplementationOnce(() => {
+                throw new Error('Database connection failed');
+            });
+            const response = await request(app)
+                .get(`${BASE_URL}/1`)
+                .expect(500);
+            expect(response.body.error).toBe('Internal Server Error');
+            jest.restoreAllMocks();
+        });
+
+        test('should return 500 on internal server error when deleting a product', async () => {
+            jest.spyOn(Product, 'findByPk').mockImplementationOnce(() => {
+                throw new Error('Database connection failed');
+            });
+            const response = await request(app)
+                .delete(`${BASE_URL}/1`)
+                .expect(500);
+            expect(response.body.error).toBe('Internal Server Error');
+            jest.restoreAllMocks();
+        });
+    });
 });

@@ -172,7 +172,14 @@ describe('Product Model', () => {
     }
   });
 
-
+  test('should serialize product correctly', async () => {
+        const productData = ProductFactory.build();
+        const product = await Product.create(productData);
+        const serialized = product.serialize();
+        
+        expect(serialized).toHaveProperty('id');
+        expect(serialized.name).toBe(product.name);
+    });
   
   
 });
